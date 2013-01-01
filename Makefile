@@ -4,7 +4,7 @@ LD = gcc
 CFLAGS = -Wall -I include/ 
 LDFLAGS = -Wall -I include/
 
-SRCS = main.c init.c 
+SRCS = clients.c init.c loop.c main.c protocol.c
 OBJECTS = $(SRCS:.c=.o)
 EXEC = server 
 

@@ -11,5 +11,5 @@ void end();
 void check_parameters(int, char*[]);
 int strtoint(char *);
 int power(int, int);
-
+void msleep(unsigned int);
 #endif

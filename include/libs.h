@@ -12,5 +12,7 @@
 #include <sys/msg.h>
 
 #define STR_BUF_SIZE 256
+#define MAX_FAILS 5
+#define FAIL -1
 
 #endif

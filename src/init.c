@@ -4,11 +4,10 @@ key_t ipc_num, shmem_num;
 int ipc_id, shmem_id;
 
 void init() {
-	if ((ipc_id = msgget(ipc_num, IPC_CREAT | 0777)) == -1) {
-		perror("Próba utworzenia kolejki komunikatów nie powiodła się!\n");
+	if ((ipc_id = msgget(ipc_num, IPC_CREAT | 0666)) == FAIL) {
+		perror("Couldn't create a message queue\n");
 		exit(EXIT_FAILURE);
 	}
-	sleep(5000);	
 }
 
 void end() {
@@ -17,12 +16,12 @@ void end() {
 
 void check_parameters(int argc, char * argv[]) {
 	if (argc != 3) {
-		perror("Sposób użycia: <executable> <ipc_num> <shmem_num>");
+		perror("Usage: <executable> <ipc_num> <shmem_num>");
 		exit(EXIT_FAILURE);
 	}
 
-	if ((ipc_num = strtoint(argv[1])) == -1 || (shmem_num = strtoint(argv[2])) == -1) {
-		perror("Podano nieprawidłowe parametry!\n");
+	if ((ipc_num = strtoint(argv[1])) == FAIL || (shmem_num = strtoint(argv[2])) == FAIL) {
+		perror("Incorrect parameters!\n");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -53,3 +52,6 @@ int power(int base, int exp) {
     return res;
 }
 
+void msleep(unsigned int msec) {
+	usleep(1000 * msec);
+}

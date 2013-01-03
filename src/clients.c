@@ -13,7 +13,7 @@ void client_service() {
 	    int err_flag;
     	while (1) {
 			if (receive_message(ipc_id, LOGIN, &login_data) != FAIL) {
-				perror("login");
+				perror("login"); /* not error, but it won't be displayed otherwise */
 				if (add_user(login_data.username) != FAIL && (client_id = msgget(login_data.ipc_num, 0666)) != FAIL) {
                     perror(login_data.username);
                     response_data.response_type = LOGIN_SUCCESS;
@@ -29,10 +29,14 @@ void client_service() {
 
 			}
 			else if (receive_message(ipc_id, MESSAGE, &chatmsg_data) != FAIL) {
-				perror("chat");
+				response_data.response_type = MSG_SEND;	
+				send_message(client_id, response_data.type, &response_data);
+				perror(chatmsg_data.message);
 			}
 			else if (receive_message(ipc_id, ROOM, &room_data) != FAIL) {
-				perror("room");
+				perror(room_data.room_name);
+				response_data.response_type = ENTERED_ROOM_SUCCESS;
+				send_message(client_id, response_data.type, &response_data);
 			}
 			else {
 				msleep(10);

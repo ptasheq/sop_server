@@ -3,7 +3,7 @@
 
 #include "libs.h"
 
-void client_service();
-int add_user(char *);
+//void client_service();
+//int add_user(char *);
 
 #endif

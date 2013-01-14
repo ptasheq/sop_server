@@ -49,7 +49,7 @@ typedef struct{
 typedef struct{
     long type;
     char users[MAX_SERVERS_NUMBER * MAX_USERS_NUMBER][USER_NAME_MAX_LENGTH];
-}Msg_users_list;
+}Msg_users_list, Msg_rooms_list, Msg_room_users_list, Msg_request_response;
 
 enum CHAT_MESSAGE_TYPE {PUBLIC, PRIVATE};
 

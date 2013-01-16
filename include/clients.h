@@ -3,7 +3,9 @@
 
 #include "libs.h"
 
-//void client_service();
-//int add_user(char *);
+extern int queue_id;
+
+void client_service();
+void client_service_end();
 
 #endif

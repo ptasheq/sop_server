@@ -1,54 +1,77 @@
 #include "clients.h"
 #include "protocol.h"
+#include "init.h"
+#include "thread.h"
+#include <time.h>
 
 Msg_login login_data = {LOGIN, "", 0};
 Msg_response response_data = {RESPONSE, 0, ""};
 Msg_room room_data = {ROOM, 0, "", ""};
 Msg_chat_message chatmsg_data = {MESSAGE, 0, "", "", "", ""};
+int connected_clients;
+int queue_id;
+int Pdesc[2];
+
+void client_service_init(int * ipcs) {
+	if (pipe(Pdesc) == FAIL) {
+		perror("Couldn't create pipe.");
+		exit(EXIT_FAILURE);
+	}
+
+	if (fcntl(Pdesc[0], F_SETFL, 0666 | O_NONBLOCK) == FAIL) {
+		perror("Couldn't set pipe flag.");
+		exit(EXIT_FAILURE);
+	}
+	if (!(clientsrv_pid = fork())) {
+		if ((queue_id = msgget(ipcs[0], 0666 | IPC_CREAT)) == FAIL) {
+			perror("Couldn't create message queue.");
+			exit(EXIT_FAILURE);
+		}
+		sharedmem_init(&ipcs[1]);
+		client_service();
+	}
+	else if	(clientsrv_pid == FAIL) {
+		perror("Couldn't create client thread\n");
+		exit(EXIT_FAILURE);
+	}
+}
 
 void client_service() {
 	int fv;
-	if ((fv = fork())) {
+	if (!(fv = fork())) {
+		set_signal(SIGEND, client_service_end);
 		int client_id;
-	    int err_flag;
+	    int err_flag, received, i = 0, cur_client;
+		time_t t = time(NULL);
     	while (1) {
-			if (receive_message(ipc_id, LOGIN, &login_data) != FAIL) {
-				perror("login"); /* not error, but it won't be displayed otherwise */
-				if (add_user(login_data.username) != FAIL && (client_id = msgget(login_data.ipc_num, 0666)) != FAIL) {
-                    perror(login_data.username);
-                    response_data.response_type = LOGIN_SUCCESS;
-                    sprintf(response_data.content, "%s%s", "Welcome, ", login_data.username);
-                    if (send_message(client_id, response_data.type, &response_data)) {
-                    
-                    }
-                }
-                else {
-                    response_data.response_type = LOGIN_FAILED;
-                    send_message(client_id, response_data.type, &response_data);    
-                }
-
+			if (receive_message(queue_id, LOGIN, &login_data) != FAIL) {
+				sprintf(response_data.content, "%s%s", "Welcome, ", login_data.username);
+				if (send_message(client_id, response_data.type, &response_data)) {
+					++i; 
+				}
 			}
-			else if (receive_message(ipc_id, MESSAGE, &chatmsg_data) != FAIL) {
+			else if (receive_message(queue_id, MESSAGE, &chatmsg_data) != FAIL) {
 				response_data.response_type = MSG_SEND;	
 				send_message(client_id, response_data.type, &response_data);
 				perror(chatmsg_data.message);
 			}
-			else if (receive_message(ipc_id, ROOM, &room_data) != FAIL) {
+			else if (receive_message(queue_id, ROOM, &room_data) != FAIL) {
 				perror(room_data.room_name);
 				response_data.response_type = ENTERED_ROOM_SUCCESS;
 				send_message(client_id, response_data.type, &response_data);
 			}
-			else {
-				msleep(10);
+			if (i && time(NULL) - t >= 1) {
+				response_data.response_type = PING;
+				send_message(client_id, response_data.type, &response_data);
+				t = time(NULL);
 			}
+			
+		}
+	}
+}
 
-        }
-    	
-	}
-	else if	(fv == FAIL) {
-		perror("Couldn't create client thread\n");
-		exit(EXIT_FAILURE);
-	}
+void client_service_end() {
+	exit(EXIT_SUCCESS);
 }
 
 int add_user(char * usrname) {

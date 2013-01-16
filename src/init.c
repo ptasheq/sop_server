@@ -1,29 +1,32 @@
 #include "init.h"
+#include "thread.h"
 
-key_t ipc_num, shmem_num;
-int ipc_id, shmem_id;
+int clientsrv_pid, logfilesrv_pid;
 
-void init() {
-	if ((ipc_id = msgget(ipc_num, IPC_CREAT | 0666)) == FAIL) {
-		perror("Couldn't create a message queue\n");
-		exit(EXIT_FAILURE);
-	}
-}
-
-void end() {
-
-}
-
-void check_parameters(int argc, char * argv[]) {
+void init(int argc, char * argv[]) {
+	int i, passed_vals[ARG_NUM]; /* 0 - ipc_num, 1,2,3 - shmem_num */
+	set_signal(SIGCHLD, end);
 	if (argc != 3) {
-		perror("Usage: <executable> <ipc_num> <shmem_num>");
+		perror("Usage: <executable> <ipc_num> <3 x shmem_num>");
 		exit(EXIT_FAILURE);
 	}
+	for (i = 0; i < ARG_NUM; ++i) {
+		if ((passed_vals[i] = strtoint(argv[i+1])) == FAIL) {
+			perror("Incorrect parameters!\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+	client_service_init(passed_vals);
+	logfile_service_init();
+}
 
-	if ((ipc_num = strtoint(argv[1])) == FAIL || (shmem_num = strtoint(argv[2])) == FAIL) {
-		perror("Incorrect parameters!\n");
+void end(int flag) {
+	kill(clientsrv_pid, SIGEND);
+	kill(logfilesrv_pid, SIGEND);
+	if (flag)
 		exit(EXIT_FAILURE);
-	}
+	else
+		exit(EXIT_SUCCESS);
 }
 
 int strtoint(char * str) {
@@ -54,4 +57,12 @@ int power(int base, int exp) {
 
 void msleep(unsigned int msec) {
 	usleep(1000 * msec);
+}
+
+void set_signal(int signum, sa_handler handler) {
+	struct sigaction sh;
+	sh.sa_handler = handler;
+	sigemptyset(&sh.sa_mask);
+	sh.sa_flags = 0;
+	sigaction(signum, &sh, NULL);
 }

@@ -1,10 +1,10 @@
 CC = gcc
 LD = gcc
 
-CFLAGS = -Wall -I include/ 
-LDFLAGS = -Wall -I include/
+CFLAGS = -Wall -I include/ -D_POSIX_C_SOURCE
+LDFLAGS = -Wall -I include/ -D_POSIX_C_SOURCE
 
-SRCS = clients.c init.c loop.c main.c protocol.c
+SRCS = clients.c init.c ioloop.c logfile.c main.c protocol.c sharedmem.c
 OBJECTS = $(SRCS:.c=.o)
 EXEC = server 
 

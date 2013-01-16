@@ -16,4 +16,6 @@
 #define FAIL -1
 #define ARG_NUM 4 
 
+typedef const unsigned int Flag;
+
 #endif

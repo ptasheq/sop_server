@@ -6,7 +6,7 @@ int clientsrv_pid, logfilesrv_pid;
 void init(int argc, char * argv[]) {
 	int i, passed_vals[ARG_NUM]; /* 0 - ipc_num, 1,2,3 - shmem_num */
 	set_signal(SIGCHLD, end);
-	if (argc != 3) {
+	if (argc != 5) {
 		perror("Usage: <executable> <ipc_num> <3 x shmem_num>");
 		exit(EXIT_FAILURE);
 	}
@@ -16,17 +16,15 @@ void init(int argc, char * argv[]) {
 			exit(EXIT_FAILURE);
 		}
 	}
-	client_service_init(passed_vals);
 	logfile_service_init();
+	/*client_service_init(passed_vals);*/
 }
 
-void end(int flag) {
-	kill(clientsrv_pid, SIGEND);
+void end(Flag flag) {
+/*	kill(clientsrv_pid, SIGEND); */
 	kill(logfilesrv_pid, SIGEND);
 	if (flag)
 		exit(EXIT_FAILURE);
-	else
-		exit(EXIT_SUCCESS);
 }
 
 int strtoint(char * str) {

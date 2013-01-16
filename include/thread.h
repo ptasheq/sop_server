@@ -5,4 +5,6 @@
 
 #define SIGEND SIGTERM
 
+extern int pdesc[2];
+
 #endif

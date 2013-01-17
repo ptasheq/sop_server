@@ -10,7 +10,7 @@ Msg_login * login_data = NULL;
 Msg_response * response_data = NULL;
 Msg_room * room_data = NULL;
 Msg_chat_message * chatmsg_data = NULL;
-int connected_clients;
+int * clients_queues = NULL;
 int queue_id;
 int Pdesc[2];
 
@@ -29,12 +29,18 @@ void client_service_init(int * ipcs) {
 			perror("Couldn't create message queue.");
 			exit(EXIT_FAILURE);
 		}
-		sharedmem_init(&ipcs[1]);
+		if (sharedmem_init(&ipcs[1]) == FAIL) {
+			msgctl(queue_id, IPC_RMID, NULL);
+			exit(EXIT_FAILURE);
+		}
 		if (!allocate_mem(LOGIN, &login_data) || !allocate_mem(RESPONSE, &response_data) || 
 			!allocate_mem(ROOM, &room_data) || !allocate_mem(MESSAGE, &chatmsg_data)) {
 			perror("Couldn't allocate data structures.");
 			client_service_end(0);
 		}
+		
+		/*if (!(clients = malloc(MAX_USERS_NUMBER * sizeof(int))*/
+
 		client_service();
 	}
 	else if	(clientsrv_pid == FAIL) {
@@ -66,7 +72,7 @@ void client_service() {
 			response_data->response_type = ENTERED_ROOM_SUCCESS;
 			send_message(client_id, response_data->type, response_data);
 		}
-		if (i && time(NULL) - t >= 1) {
+		if (time(NULL) - t >= 1) {
 			response_data->response_type = PING;
 			send_message(client_id, response_data->type, response_data);
 			t = time(NULL);
@@ -79,6 +85,7 @@ void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 	free_mem(response_data);
 	free_mem(chatmsg_data);
 	free_mem(room_data);
+
 	sharedmem_end();
 	if (flag)
 		exit(EXIT_SUCCESS);

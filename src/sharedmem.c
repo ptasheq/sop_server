@@ -6,8 +6,8 @@ int * server_ids_data;
 
 void sharedmem_init(int * shm_nums) {
 	int user_server_desc, room_server_desc, server_ids_desc;
-	if ((user_server_desc = shmget(shm_nums[0], sizeof(User_server) * MAX_SERVERS_NUMBER * MAX_USERS_NUMBER, 0666 | IPC_CREAT)) == FAIL ||
-	(room_server_desc = shmget(shm_nums[1], sizeof(Room_server) * MAX_SERVERS_NUMBER * MAX_USERS_NUMBER, 0666 | IPC_CREAT)) == FAIL ||
+	if ((user_server_desc = shmget(shm_nums[0], sizeof(User_server) * MAX_SERVERS_NUMBER * MAX_USERS_NUMBER, 0666)) == FAIL ||
+	(room_server_desc = shmget(shm_nums[1], sizeof(Room_server) * MAX_SERVERS_NUMBER * MAX_USERS_NUMBER, 0666)) == FAIL ||
 	(server_ids_desc = shmget(shm_nums[2], sizeof(int) * MAX_SERVERS_NUMBER, 0666 | IPC_CREAT)) == FAIL) {
 		perror("Couldn't connect to shared memory.");
 		exit(EXIT_FAILURE);	

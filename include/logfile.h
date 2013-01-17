@@ -16,5 +16,6 @@ void logfile_service();
 void logfile_service_end();
 char correct_logfile(char *);
 void get_time(char *);
+short prepare_listing(char *);
 #endif
 

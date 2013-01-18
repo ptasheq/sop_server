@@ -80,7 +80,7 @@ extern Msg_login * login_data;
 extern Msg_response * response_data;
 extern Msg_chat_message * chatmsg_data;
 extern Msg_room * room_data;
-extern int ipc_id;
+extern int queue_id;
 
 int send_message(int, int, ...);
 int receive_message(int, int, ...);

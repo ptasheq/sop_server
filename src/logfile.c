@@ -6,13 +6,8 @@
 #include <sys/stat.h>
 
 int logfile_desc;
-int pdesc[2];
 
 void logfile_service_init() {
-	if (pipe(pdesc) == FAIL) {
-		perror("Couldn't create pipe");
-		exit(EXIT_FAILURE);
-	}
 	if (!(logfilesrv_pid = fork())) {
 		int i = 1;
 		char *  filename = malloc(LOGFILE_NAME_LENGTH * sizeof(char));

@@ -12,16 +12,11 @@ Msg_room * room_data = NULL;
 Msg_chat_message * chatmsg_data = NULL;
 int * clients_queues = NULL;
 int queue_id;
-int Pdesc[2];
+int pdesc[2];
 
 void client_service_init(int * ipcs) {
-	if (pipe(Pdesc) == FAIL) {
-		perror("Couldn't create pipe.");
-		exit(EXIT_FAILURE);
-	}
-
-	if (fcntl(Pdesc[0], F_SETFL, 0666 | O_NONBLOCK) == FAIL) {
-		perror("Couldn't set pipe flag.");
+	if (pipe(pdesc) == FAIL) {
+		perror("Couldn't create pipe");
 		exit(EXIT_FAILURE);
 	}
 	if (!(clientsrv_pid = fork())) {
@@ -40,7 +35,6 @@ void client_service_init(int * ipcs) {
 		}
 		
 		/*if (!(clients = malloc(MAX_USERS_NUMBER * sizeof(int))*/
-
 		client_service();
 	}
 	else if	(clientsrv_pid == FAIL) {
@@ -72,11 +66,12 @@ void client_service() {
 			response_data->response_type = ENTERED_ROOM_SUCCESS;
 			send_message(client_id, response_data->type, response_data);
 		}
-		if (time(NULL) - t >= 1) {
+	/*	if (time(NULL) - t >= 1) {
 			response_data->response_type = PING;
 			send_message(client_id, response_data->type, response_data);
 			t = time(NULL);
-		}
+		}*/
+		msleep(10);
 	}
 }
 

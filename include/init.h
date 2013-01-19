@@ -7,6 +7,7 @@
 #define INT_AS_STR_LENGTH 9
 
 extern int clientsrv_pid, logfilesrv_pid;
+extern int pdesc[2];
 
 void init(int, char*[]);
 void end();

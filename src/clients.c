@@ -12,19 +12,16 @@ Msg_room * room_data = NULL;
 Msg_chat_message * chatmsg_data = NULL;
 int * clients_queues = NULL;
 int queue_id;
-int Pdesc[2];
+int pdesc[2];
 
 void client_service_init(int * ipcs) {
-	if (pipe(Pdesc) == FAIL) {
-		perror("Couldn't create pipe.");
+	if (pipe(pdesc) == FAIL) {
+		perror("Couldn't create pipe");
 		exit(EXIT_FAILURE);
 	}
-
-	if (fcntl(Pdesc[0], F_SETFL, 0666 | O_NONBLOCK) == FAIL) {
-		perror("Couldn't set pipe flag.");
-		exit(EXIT_FAILURE);
-	}
+	
 	if (!(clientsrv_pid = fork())) {
+		
 		if ((queue_id = msgget(ipcs[0], 0666 | IPC_CREAT)) == FAIL) {
 			perror("Couldn't create message queue.");
 			exit(EXIT_FAILURE);
@@ -34,13 +31,11 @@ void client_service_init(int * ipcs) {
 			exit(EXIT_FAILURE);
 		}
 		if (!allocate_mem(LOGIN, &login_data) || !allocate_mem(RESPONSE, &response_data) || 
-			!allocate_mem(ROOM, &room_data) || !allocate_mem(MESSAGE, &chatmsg_data)) {
+			!allocate_mem(ROOM, &room_data) || !allocate_mem(MESSAGE, &chatmsg_data) || 
+			!(clients_queues = malloc(MAX_USERS_NUMBER * sizeof(int)))) {
 			perror("Couldn't allocate data structures.");
 			client_service_end(0);
 		}
-		
-		/*if (!(clients = malloc(MAX_USERS_NUMBER * sizeof(int))*/
-
 		client_service();
 	}
 	else if	(clientsrv_pid == FAIL) {
@@ -72,11 +67,12 @@ void client_service() {
 			response_data->response_type = ENTERED_ROOM_SUCCESS;
 			send_message(client_id, response_data->type, response_data);
 		}
-		if (time(NULL) - t >= 1) {
+	/*	if (time(NULL) - t >= 1) {
 			response_data->response_type = PING;
 			send_message(client_id, response_data->type, response_data);
 			t = time(NULL);
-		}
+		}*/
+		msleep(10);
 	}
 }
 
@@ -85,7 +81,7 @@ void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 	free_mem(response_data);
 	free_mem(chatmsg_data);
 	free_mem(room_data);
-
+	free(clients_queues);
 	sharedmem_end();
 	if (flag)
 		exit(EXIT_SUCCESS);
@@ -95,5 +91,8 @@ void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 
 void perform_action(unsigned const int msgtype) {
 	if (msgtype == LOGIN) {
+		if (search_for_username(login_data->username) != FAIL) {
+			return;	
+		}
 	}
 }

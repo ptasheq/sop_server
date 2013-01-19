@@ -16,12 +16,12 @@ void init(int argc, char * argv[]) {
 			exit(EXIT_FAILURE);
 		}
 	}
+	client_service_init(passed_vals);
 	logfile_service_init();
-	/*client_service_init(passed_vals);*/
 }
 
 void end(Flag flag) {
-/*	kill(clientsrv_pid, SIGEND); */
+	kill(clientsrv_pid, SIGEND); 
 	kill(logfilesrv_pid, SIGEND);
 	if (flag)
 		exit(EXIT_FAILURE);

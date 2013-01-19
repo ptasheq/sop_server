@@ -10,6 +10,7 @@
 #define SEM_USER_SERVER 36
 #define SEM_ROOM_SERVER 37
 #define SEM_NUM 3
+#define SHM_NUM SEM_NUM
 
 extern User_server * user_server_data;
 extern Room_server * room_server_data;

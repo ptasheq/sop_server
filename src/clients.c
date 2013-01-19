@@ -77,6 +77,7 @@ void client_service() {
 }
 
 void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
+	set_signal(SIGPIPE, SIG_IGN);
 	free_mem(login_data);
 	free_mem(response_data);
 	free_mem(chatmsg_data);

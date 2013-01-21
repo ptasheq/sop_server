@@ -14,7 +14,6 @@ short sharedmem_init(int * shm_nums) {
 	}
 	
 	if ((sems[0] = semget(SEM_SERVER_IDS, 1, 0666 | IPC_CREAT | IPC_EXCL)) != FAIL) {
-		perror("EXCL");
 		flag = 0666 | IPC_CREAT | IPC_EXCL;
 	}
 	else if ((sems[0] = semget(SEM_SERVER_IDS, 1, 0666)) != FAIL) {
@@ -52,7 +51,6 @@ short sharedmem_init(int * shm_nums) {
 			return FAIL;
 		}
 	}
-
 	if ((server_ids_data = shmat(shmids[0], NULL, 0)) == (void *)FAIL || 
 	(user_server_data = shmat(shmids[1], NULL, 0)) == (void *)FAIL ||
 	(room_server_data = shmat(shmids[2], NULL, 0)) == (void *)FAIL) { /* maybe some operations finished successfully */
@@ -66,11 +64,11 @@ short sharedmem_init(int * shm_nums) {
 		semdown(1);
 		semdown(2);
 		for (i = 0; i < MAX_SERVERS_NUMBER; ++i) {
-			server_ids_data[i] = 0;
+			server_ids_data[i] = -1;
 		}
 		for (i = 0; i < memunits; ++i) {
-			user_server_data[i].user_name[0] = '\0';
-			room_server_data[i].room_name[0] = '\0';
+			user_server_data[i].server_id = -1;
+			room_server_data[i].server_id = -1;
 		}
 		semup(2);
 		semup(1);
@@ -87,12 +85,11 @@ void sharedmem_end() {
 	short i = 0, last = 1;
 	semdown(0);
 	for (i = 0; i < MAX_SERVERS_NUMBER; ++i) {
-		fprintf(stderr, "%d\n", server_ids_data[i]);
-		if (server_ids_data[i] && server_ids_data[i] != queue_id) {
+		if (server_ids_data[i] > -1 && server_ids_data[i] != queue_id) {
 			last = 0;
 		}
 		else if (server_ids_data[i] == queue_id) { /* removing the server from the array */
-			server_ids_data[i] = 0;	
+			server_ids_data[i] = -1;	
 		}
 	}
 	if (last) { /* we are the last server */
@@ -125,7 +122,7 @@ void sharedmem_end() {
 short register_server() {
 	int i = 0;
 	semdown(0);
-	while (i < MAX_SERVERS_NUMBER && server_ids_data[i] ) {
+	while (i < MAX_SERVERS_NUMBER && server_ids_data[i] > -1 ) {
 		++i;
 	}
 	if (i == MAX_SERVERS_NUMBER) { 
@@ -133,15 +130,82 @@ short register_server() {
 		return FAIL;
 	}
 	server_ids_data[i] = queue_id;
-	fprintf(stderr, "%d\n", server_ids_data[i]);
 	semup(0);
 	return 0;
 }
 
-short search_for_username(char * str) {
-	int i = 0;
+short do_in_shmem(short flag, const int server_id, const char * str) {
+	unsigned short i = 0, empty = -1, given = -1, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;
 
-	return 0;
+	if (!(flag & 1)) { /* user_server */
+		semdown(1);
+		while (i < size) {
+			if (empty < 0 && user_server_data[i].server_id == -1)
+				empty = i;
+			if (user_server_data[i].server_id > -1 && !strcmp(str, user_server_data[i].user_name))
+				given = i;
+			++i;
+		}
+
+		if ((flag & ADD_FLAG) && empty > -1 && given == -1) { /* we have room and string is unique */
+			strcpy(user_server_data[empty].user_name, str);
+			user_server_data[empty].server_id = server_id;
+		}
+		else if ((flag & DEL_FLAG) && given > -1) {
+			user_server_data[given].server_id = -1;
+		}
+		else if (given > -1) {
+			return user_server_data[given].server_id; /* we have to remember about semaphore */
+		}
+		semup(1);
+	} 
+	else { /* room_server */
+		semdown(2);
+		while (i < size) {
+			if (empty < 0 && room_server_data[i].server_id == -1)
+				empty = i;
+			if (room_server_data[i].server_id == server_id && !strcmp(str, room_server_data[i].room_name))
+				given = i;
+			++i;
+		}
+
+		if ((flag & ADD_FLAG) && empty > -1 && given == -1) { /* we have room and string is unique */
+			strcpy(room_server_data[empty].room_name, str);
+			room_server_data[empty].server_id = server_id;
+		}
+		else if ((flag & DEL_FLAG) && given > -1) {
+			room_server_data[given].server_id = -1;
+		}
+		semup(2);
+	}
+	return (given > -1 || empty > -1) ? 0 : FAIL;
+}
+
+short get_list_from_shmem(const int type, Msg_request_response * ptr) {
+	int i, j, size = MAX_SERVERS_NUMBER*MAX_USERS_NUMBER;
+	if (type == USERS_LIST) {
+		semdown(1);
+		for (i = 0; i < size; ++i) {
+			strcpy(ptr->names[i], user_server_data[i].user_name);
+		}
+		semup(1);
+		return 0;
+	}
+	else if (type == ROOMS_LIST)  {
+		semdown(2);
+		for (i = 0; i < size; ++i) {
+			strcpy(ptr->names[i], room_server_data[i].room_name);
+		}
+		semup(2);
+		for (i = 0; i < size; ++i) {
+			for (j = i+1; j < size; ++j) {
+				if (!strcmp(ptr->names[i], ptr->names[j])) /* if name is unique */
+					ptr->names[i][0] = '\0';
+			}
+		}
+		return 0;
+	}
+	return FAIL;
 }
 
 void semdown(short semindex) {

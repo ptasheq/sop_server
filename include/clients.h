@@ -3,6 +3,8 @@
 
 #include "libs.h"
 
+#define ROOM_USER 25
+
 extern int queue_id;
 
 void client_service();

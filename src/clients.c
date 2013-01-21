@@ -10,7 +10,10 @@ Msg_login * login_data = NULL;
 Msg_response * response_data = NULL;
 Msg_room * room_data = NULL;
 Msg_chat_message * chatmsg_data = NULL;
-int * clients_queues = NULL;
+Msg_request * request_data = NULL;
+Msg_request_response * request_response_data = NULL;
+Room_user * room_user_data = NULL;
+int clients = 0;
 int queue_id;
 int pdesc[2];
 
@@ -20,8 +23,7 @@ void client_service_init(int * ipcs) {
 		exit(EXIT_FAILURE);
 	}
 	
-	if (!(clientsrv_pid = fork())) {
-		
+	if (!(clientsrv_pid = fork())) {	
 		if ((queue_id = msgget(ipcs[0], 0666 | IPC_CREAT)) == FAIL) {
 			perror("Couldn't create message queue.");
 			exit(EXIT_FAILURE);
@@ -31,10 +33,16 @@ void client_service_init(int * ipcs) {
 			exit(EXIT_FAILURE);
 		}
 		if (!allocate_mem(LOGIN, &login_data) || !allocate_mem(RESPONSE, &response_data) || 
-			!allocate_mem(ROOM, &room_data) || !allocate_mem(MESSAGE, &chatmsg_data) || 
-			!(clients_queues = malloc(MAX_USERS_NUMBER * sizeof(int)))) {
+			!allocate_mem(ROOM, &room_data) || !allocate_mem(MESSAGE, &chatmsg_data) ||
+			!allocate_mem(RESPONSE, &request_data) || !allocate_mem(USERS, &request_response_data) || 
+			!allocate_mem(ROOM_USER, &room_user_data)) {
 			perror("Couldn't allocate data structures.");
 			client_service_end(0);
+		}
+		short i = 0;
+		while (i < MAX_USERS_NUMBER) {
+			room_user_data[i].roomname[0] = '\0';
+			++i;
 		}
 		client_service();
 	}
@@ -82,7 +90,6 @@ void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 	free_mem(response_data);
 	free_mem(chatmsg_data);
 	free_mem(room_data);
-	free(clients_queues);
 	sharedmem_end();
 	if (flag)
 		exit(EXIT_SUCCESS);
@@ -91,9 +98,106 @@ void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 }
 
 void perform_action(unsigned const int msgtype) {
+	int i = 0;
 	if (msgtype == LOGIN) {
-		if (search_for_username(login_data->username) != FAIL) {
-			return;	
+		response_data->response_type = (clients < MAX_USERS_NUMBER && add_user_in_shmem(login_data->username, queue_id) != FAIL) ? 
+		LOGIN_SUCCESS : LOGIN_FAILED;
+		if (response_data->response_type == LOGIN_SUCCESS)
+			++clients;
+
+	}
+	else if (msgtype == LOGOUT) {
+		response_data->response_type = (clients > 0 && del_user_in_shmem(login_data->username, queue_id) != FAIL) ?
+		LOGOUT_SUCCESS : LOGOUT_FAILED;
+		if (response_data->response_type == LOGOUT_SUCCESS)
+			--clients;
+	}
+	else if (msgtype == REQUEST) {
+		request_response_data->type = (request_data->request_type == USERS_LIST) ? USERS : 
+		(request_data->request_type == ROOMS_LIST) ? ROOMS : ROOM_USERS;
+		if (request_data->request_type == ROOM_USERS_LIST) {
+
+		}
+		else {
+			get_list_from_shmem(request_data->request_type, request_response_data);	
 		}
 	}
+	else if (msgtype == ROOM) {
+		int i = 0, empty = -1, more_in_room = 0;
+		if (room_data->operation_type == ENTER_ROOM || room_data->operation_type == CHANGE_ROOM) {
+			while (i < MAX_USERS_NUMBER) {
+				if (room_data->operation_type == CHANGE_ROOM &&	!strcmp(room_user_data[i].username, room_data->user_name)) {
+					/* wants change room and found the same username */
+					if (!strcmp(room_user_data[i].roomname, room_data->room_name)) { /* already in the same room */
+						empty = -1;
+						i = MAX_USERS_NUMBER;
+					}
+					else {
+						empty = i;
+					}
+					break;
+				}
+				else if (!room_user_data[i].roomname[i] && empty < 0) { /* found empty place */
+					empty = i;
+				}
+				++i;		
+			}
+			if (room_data->operation_type == CHANGE_ROOM) {
+				if (i < MAX_USERS_NUMBER && empty > -1) {
+					for (i = 0; i < MAX_USERS_NUMBER; ++i) {
+						if (room_user_data[i].roomname[0] && !strcmp(room_user_data[i].roomname, room_data->room_name) && i != empty)
+							break;
+					}
+					if (i == MAX_USERS_NUMBER) { /* Previous room should be deleted */
+						del_room_in_shmem(room_user_data[empty].roomname, queue_id);
+					}
+				}
+			}
+			if (empty > -1 && add_room_in_shmem(room_data->room_name, queue_id) != FAIL) {
+				strcpy(room_user_data[empty].roomname, room_data->room_name);
+				strcpy(room_user_data[empty].username, room_data->user_name);
+				response_data->response_type = (room_data->operation_type == CHANGE_ROOM) ? CHANGE_ROOM_SUCCESS : ENTERED_ROOM_SUCCESS;
+			}
+			else {
+				response_data->response_type = (room_data->operation_type == CHANGE_ROOM) ? CHANGE_ROOM_FAILED : ENTERED_ROOM_FAILED;
+			}
+		}
+		if (room_data->operation_type == LEAVE_ROOM) {
+			while (i < MAX_USERS_NUMBER) {
+				if (!strcmp(room_user_data[i].roomname, room_data->room_name) && room_data->room_name[0]) {
+					if (!strcmp(room_user_data[i].username, room_data->user_name))
+						empty = i;
+					else
+						more_in_room = 1;
+				}
+				++i;	
+			}
+			if (empty > -1) {
+				if (!more_in_room)
+					del_room_in_shmem(room_user_data[empty].roomname, queue_id);
+				room_user_data[empty].roomname[0] = '\0';
+				response_data->response_type = LEAVE_ROOM_SUCCESS;
+			}
+			else
+				response_data->response_type = LEAVE_ROOM_FAILED;
+		}
+	}
+	else if (msgtype == MESSAGE) {
+		while (i < MAX_USERS_NUMBER && !strcmp(chatmsg_data->sender, room_user_data[i].username)) 
+			++i;
+		if (i < MAX_USERS_NUMBER) {
+			int j = 0;
+			if (chatmsg_data->msg_type == PRIVATE) {
+				while (j < MAX_USERS_NUMBER && strcmp(chatmsg_data->receiver, room_user_data[j].username))
+					++j;
+				if (j == MAX_USERS_NUMBER) { /* user not found, so checking if there is such room */
+					j = 0;
+					while (j < MAX_USERS_NUMBER && strcmp(chatmsg_data->receiver, room_user_data[j].roomname))
+						++j;
+				}
+			}
+		}
+	}
+	write(pdesc[1], &msgtype, sizeof(int));
 }
+

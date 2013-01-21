@@ -11,6 +11,14 @@
 #define SEM_ROOM_SERVER 37
 #define SEM_NUM 3
 #define SHM_NUM SEM_NUM
+#define ADD_FLAG 0010
+#define DEL_FLAG 0100
+
+#define add_user_in_shmem(str, id) do_in_shmem(0 | ADD_FLAG, id, str)
+#define add_room_in_shmem(str, id) do_in_shmem(1 | ADD_FLAG, id, str)
+#define del_user_in_shmem(str, id) do_in_shmem(0 | DEL_FLAG, id, str)
+#define del_room_in_shmem(str, id) do_in_shmem(1 | DEL_FLAG, id, str)
+
 
 extern User_server * user_server_data;
 extern Room_server * room_server_data;
@@ -20,6 +28,8 @@ extern int * sems;
 short sharedmem_init(int *);
 void sharedmem_end();
 short register_server();
+short do_in_shmem(short flag, const int, const char *);
+short get_list_from_shmem(const int, Msg_request_response *);
 void semdown(short);
 void semup(short);
 

@@ -7,4 +7,7 @@
 
 extern int pdesc[2];
 
+void semdown(int);
+void semup(int);
+
 #endif

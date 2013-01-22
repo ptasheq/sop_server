@@ -5,9 +5,10 @@
 
 #define ASCII_TO_INT 48
 #define INT_AS_STR_LENGTH 9
+#define SERVER_REGISTERED 30
 
 extern int clientsrv_pid, logfilesrv_pid;
-extern int pdesc[2];
+extern int pdesc[2], pdesc2[2];
 
 void init(int, char*[]);
 void end();

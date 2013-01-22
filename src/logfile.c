@@ -3,20 +3,21 @@
 #include "thread.h"
 #include "protocol.h"
 #include <time.h>
-#include <sys/stat.h>
+#include <sys/sem.h>
 
 int logfile_desc;
+int logsem;
+char * filename = "/tmp/czat.log";
 
 void logfile_service_init() {
 	if (!(logfilesrv_pid = fork())) {
-		int i = 1;
-		char *  filename = malloc(LOGFILE_NAME_LENGTH * sizeof(char));
-		sprintf(filename, "%s%d%s", LOGFILE_NAME, i, LOGFILE_EXT);
-		while (i < 100 && correct_logfile(filename) == FAIL) {
-			++i;
-			sprintf(filename, "%s%d%s", LOGFILE_NAME, i, LOGFILE_EXT);
+		if ((logsem = semget(SEM_LOGFILE, 1, 0666 | IPC_CREAT | IPC_EXCL)) != FAIL)
+			semctl(logsem, 0, SETVAL, 1);
+		else if ((logsem = semget(SEM_LOGFILE, 1, 0666 | IPC_CREAT)) == -1) {
+			perror("Couldn't create semaphore for logfile.");
+			exit(EXIT_FAILURE);
 		}
-		free(filename);
+		semctl(logsem, 0, SETVAL, 1);
 		logfile_service();	
 	}
 	else if (logfilesrv_pid == FAIL) {
@@ -29,34 +30,28 @@ void logfile_service() {
 	char line[STR_BUF_SIZE];
 	set_signal(SIGEND, logfile_service_end);
 	get_time(line);
-	strcpy(&line[TIME_STR_LENGTH], "Server started.\n");
-	write(logfile_desc, line, strlen(line));
 	while (1) {
-		if (prepare_listing(line) != FAIL)
-			write(logfile_desc, line, sizeof(line));
+		prepare_listing(line);
 	}
 }
 
 void logfile_service_end() {
-	char line[TIME_STR_LENGTH + 15];
+	char line[TIME_STR_LENGTH + 20];
+	short last;
 	get_time(line);
-	strcpy(&line[TIME_STR_LENGTH], "Server closed.");
-	write(logfile_desc, line, strlen(line));
-	close(pdesc[0]);
-	close(logfile_desc);
-	exit(EXIT_SUCCESS);
-}
-
-char correct_logfile(char * filename) {
-	struct stat file_stat;
-	if (access(filename, F_OK) != FAIL) {
-		if (stat(filename, &file_stat) != FAIL && time(NULL) - file_stat.st_atime > SEC_IN_DAY)
-			if ((logfile_desc = creat(filename, 0666)) != FAIL)
-				return 0;
+	strcpy(&line[TIME_STR_LENGTH], "Server closed.\n");
+	semdown(logsem);
+	if ((logfile_desc = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0666)) != FAIL) {
+		write(logfile_desc, line, strlen(line));
 	}
-	else if ((logfile_desc = creat(filename, 0666 | O_EXCL)) != FAIL)
-		return 0;
-	return FAIL;
+	close(logfile_desc);
+	semup(logsem);
+	read(pdesc[0], &last, sizeof(short));
+	if (last && !semctl(logsem, 0, GETNCNT))
+		semctl(logsem, 0, IPC_RMID);
+	close(pdesc[0]);
+	close(pdesc2[1]);
+	exit(EXIT_SUCCESS);
 }
 
 void get_time(char * str) { /* all numbers are set because of result of ctime (char *) */
@@ -82,41 +77,53 @@ void get_time(char * str) { /* all numbers are set because of result of ctime (c
 }
 
 short prepare_listing(char * line) {
-	int type;
+	unsigned short type;
 	char rname[ROOM_NAME_MAX_LENGTH];
 	char uname[USER_NAME_MAX_LENGTH];
-	if (read(pdesc[0], &type, sizeof(int)) > 0) {
-		if (read(pdesc[0], uname, USER_NAME_MAX_LENGTH) > 0 && read(pdesc[0], rname, ROOM_NAME_MAX_LENGTH) > 0) {
+	if (piperead(&type, sizeof(short)) > FAIL) {
+		if (piperead(uname, USER_NAME_MAX_LENGTH) > FAIL && piperead(rname, ROOM_NAME_MAX_LENGTH) > FAIL) {
+			semdown(logsem);
+			get_time(line);
+			if ((logfile_desc = open(filename, O_CREAT | O_WRONLY | O_APPEND, 0666)) == FAIL) {
+				perror("Couldn't open logfile.");
+				exit(EXIT_FAILURE);
+			}
 			switch (type) {
-				case LOGIN_SUCCESS: sprintf(line, "%s %s %s", "User", uname, "successfully logged in.\n");
+				case SERVER_REGISTERED: sprintf(&line[TIME_STR_LENGTH], "%s", "Server registered.\n");
+				perror(line);
 				break;
-				case LOGIN_FAILED: sprintf(line, "%s %s %s", "User", uname, "couldn't log in.\n");
+				case LOGIN_SUCCESS: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "successfully logged in.\n");
 				break;
-				case LOGOUT_SUCCESS: sprintf(line, "%s %s %s", "User", uname, "successfully logged out.\n");
+				case LOGIN_FAILED: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "couldn't log in.\n");
 				break;
-				case LOGOUT_FAILED: sprintf(line, "%s %s %s", "User", uname, "couldn't log out.\n");
+				case LOGOUT_SUCCESS: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "successfully logged out.\n");
+				break;
+				case LOGOUT_FAILED: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "couldn't log out.\n");
 				break;
 				case ENTERED_ROOM_SUCCESS: 
-					sprintf(line, "%s %s %s %s%s", "User", uname, "successfully entered room", rname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "successfully entered room", rname, ".\n");
 				break;
 				case ENTERED_ROOM_FAILED: 
-					sprintf(line, "%s %s %s %s%s", "User", uname, "couldn't enter room", rname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "couldn't enter room", rname, ".\n");
 				break;
 				case CHANGE_ROOM_SUCCESS: 
-					sprintf(line, "%s %s %s %s%s", "User", uname, "successfully changed room for", rname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "successfully changed room for", rname, ".\n");
 				break;
 				case CHANGE_ROOM_FAILED:
-					sprintf(line, "%s %s %s %s%s", "User", uname, "couldn't change room for", rname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "couldn't change room for", rname, ".\n");
 				break;
 				case LEAVE_ROOM_SUCCESS:
-					sprintf(line, "%s %s %s %s%s", "User", uname, "successfully left room", rname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "successfully left room", rname, ".\n");
 				break;
 				case LEAVE_ROOM_FAILED:
-					sprintf(line, "%s %s %s %s%s", "User", uname, "couldn't leave room", rname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "couldn't leave room", rname, ".\n");
 				break;
 				default:
-					sprintf(line, "%s %s%s", "Lost connection with user", uname, ".\n");
+					sprintf(&line[TIME_STR_LENGTH], "%s %s%s", "Lost connection with user", uname, ".\n");
 			}
+			write(logfile_desc, line, strlen(line));
+			close(logfile_desc);
+			semup(logsem);
 		}
 		else 
 			return FAIL;
@@ -124,4 +131,13 @@ short prepare_listing(char * line) {
 	else 
 		return FAIL;
 	return 0; 
+}
+
+short piperead(void * ptr, short bytes) {
+	char control_byte = 1;
+	if (read(pdesc[0], ptr, bytes) > 0) {
+		write(pdesc2[1], &control_byte, 1);
+		return 0;
+	}
+	return FAIL;
 }

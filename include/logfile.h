@@ -3,19 +3,18 @@
 
 #include "libs.h"
 
-#define LOGFILE_NAME "server"
-#define LOGFILE_EXT ".log"
-#define LOGFILE_NAME_LENGTH strlen(LOGFILE_NAME) + strlen(LOGFILE_EXT) + 3
 #define TIME_STR_LENGTH 14
-#define SEC_IN_DAY 86400
+#define SEM_LOGFILE 38
 
 extern int logfile_desc;
+extern int logsem;
+extern char * filename;
 
 void logfile_service_init();
 void logfile_service(); 
 void logfile_service_end();
-char correct_logfile(char *);
 void get_time(char *);
 short prepare_listing(char *);
+short piperead(void *, short);
 #endif
 

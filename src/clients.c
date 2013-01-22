@@ -15,10 +15,10 @@ Msg_request_response * request_response_data = NULL;
 Room_user * room_user_data = NULL;
 int clients = 0;
 int queue_id;
-int pdesc[2];
+int pdesc[2], pdesc2[2];
 
 void client_service_init(int * ipcs) {
-	if (pipe(pdesc) == FAIL) {
+	if (pipe(pdesc) == FAIL || pipe(pdesc2) == FAIL) {
 		perror("Couldn't create pipe");
 		exit(EXIT_FAILURE);
 	}
@@ -44,6 +44,7 @@ void client_service_init(int * ipcs) {
 			room_user_data[i].roomname[0] = '\0';
 			++i;
 		}
+		inform_log_service(SERVER_REGISTERED, "", "");
 		client_service();
 	}
 	else if	(clientsrv_pid == FAIL) {
@@ -86,11 +87,14 @@ void client_service() {
 
 void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 	set_signal(SIGPIPE, SIG_IGN);
+	short last = sharedmem_end();
+	write(pdesc[1], &last, sizeof(short));
 	free_mem(login_data);
 	free_mem(response_data);
 	free_mem(chatmsg_data);
 	free_mem(room_data);
-	sharedmem_end();
+	close(pdesc[1]);
+	close(pdesc2[0]);
 	if (flag)
 		exit(EXIT_SUCCESS);
 	else
@@ -201,3 +205,13 @@ void perform_action(unsigned const int msgtype) {
 	write(pdesc[1], &msgtype, sizeof(int));
 }
 
+void inform_log_service(unsigned short type, const char * user, const char * room) {
+	char control_byte;
+	write(pdesc[1], &type, sizeof(short));
+	read(pdesc2[0], &control_byte, 1);
+	write(pdesc[1], "cos", 4);
+	read(pdesc2[0], &control_byte, 1);
+	write(pdesc[1], "cos2", 5);
+	read(pdesc2[0], &control_byte, 1);
+	perror("wysylamy");
+}

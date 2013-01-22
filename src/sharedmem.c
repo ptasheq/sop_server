@@ -1,4 +1,5 @@
 #include "sharedmem.h"
+#include "thread.h"
 
 User_server * user_server_data = (void *) FAIL;
 Room_server * room_server_data = (void *) FAIL;
@@ -60,9 +61,9 @@ short sharedmem_init(int * shm_nums) {
 	}
 
 	if (flag & IPC_CREAT)  { /* we are the first */
-		semdown(0);
-		semdown(1);
-		semdown(2);
+		semdown(sems[0]);
+		semdown(sems[1]);
+		semdown(sems[2]);
 		for (i = 0; i < MAX_SERVERS_NUMBER; ++i) {
 			server_ids_data[i] = -1;
 		}
@@ -70,9 +71,9 @@ short sharedmem_init(int * shm_nums) {
 			user_server_data[i].server_id = -1;
 			room_server_data[i].server_id = -1;
 		}
-		semup(2);
-		semup(1);
-		semup(0);
+		semup(sems[2]);
+		semup(sems[1]);
+		semup(sems[0]);
 	}
 	if (register_server() == FAIL) {
 		perror("The array of servers is already full.");
@@ -81,9 +82,9 @@ short sharedmem_init(int * shm_nums) {
 	return 0;
 }
 
-void sharedmem_end() {
+short sharedmem_end() {
 	short i = 0, last = 1;
-	semdown(0);
+	semdown(sems[0]);
 	for (i = 0; i < MAX_SERVERS_NUMBER; ++i) {
 		if (server_ids_data[i] > -1 && server_ids_data[i] != queue_id) {
 			last = 0;
@@ -93,8 +94,8 @@ void sharedmem_end() {
 		}
 	}
 	if (last) { /* we are the last server */
-		semdown(1);
-		semdown(2);
+		semdown(sems[1]);
+		semdown(sems[2]);
 		if (!semctl(sems[0], 0, GETNCNT) && !semctl(sems[1], 0, GETNCNT) && !semctl(sems[2], 0, GETNCNT)) {
 			/* no one else is waiting */
 
@@ -105,7 +106,7 @@ void sharedmem_end() {
 		}
 		else { /* someone appeared in the meantime */
 			for (i = 0; i < SEM_NUM; ++i) {
-				semup(i);
+				semup(sems[i]);
 			}
 		}
 	}
@@ -117,20 +118,21 @@ void sharedmem_end() {
 	server_ids_data == (void *) FAIL ? 0 : shmdt(server_ids_data);
 	free(shmids);	
 	free(sems);
+	return last;
 }
 
 short register_server() {
 	int i = 0;
-	semdown(0);
+	semdown(sems[0]);
 	while (i < MAX_SERVERS_NUMBER && server_ids_data[i] > -1 ) {
 		++i;
 	}
 	if (i == MAX_SERVERS_NUMBER) { 
-		semup(0);
+		semup(sems[0]);
 		return FAIL;
 	}
 	server_ids_data[i] = queue_id;
-	semup(0);
+	semup(sems[0]);
 	return 0;
 }
 
@@ -138,7 +140,7 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 	unsigned short i = 0, empty = -1, given = -1, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;
 
 	if (!(flag & 1)) { /* user_server */
-		semdown(1);
+		semdown(sems[1]);
 		while (i < size) {
 			if (empty < 0 && user_server_data[i].server_id == -1)
 				empty = i;
@@ -157,10 +159,10 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 		else if (given > -1) {
 			return user_server_data[given].server_id; /* we have to remember about semaphore */
 		}
-		semup(1);
+		semup(sems[1]);
 	} 
 	else { /* room_server */
-		semdown(2);
+		semdown(sems[2]);
 		while (i < size) {
 			if (empty < 0 && room_server_data[i].server_id == -1)
 				empty = i;
@@ -176,7 +178,7 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 		else if ((flag & DEL_FLAG) && given > -1) {
 			room_server_data[given].server_id = -1;
 		}
-		semup(2);
+		semup(sems[2]);
 	}
 	return (given > -1 || empty > -1) ? 0 : FAIL;
 }
@@ -184,15 +186,15 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 short get_list_from_shmem(const int type, Msg_request_response * ptr) {
 	int i, j, size = MAX_SERVERS_NUMBER*MAX_USERS_NUMBER;
 	if (type == USERS_LIST) {
-		semdown(1);
+		semdown(sems[1]);
 		for (i = 0; i < size; ++i) {
 			strcpy(ptr->names[i], user_server_data[i].user_name);
 		}
-		semup(1);
+		semup(sems[1]);
 		return 0;
 	}
 	else if (type == ROOMS_LIST)  {
-		semdown(2);
+		semdown(sems[2]);
 		for (i = 0; i < size; ++i) {
 			strcpy(ptr->names[i], room_server_data[i].room_name);
 		}
@@ -208,12 +210,12 @@ short get_list_from_shmem(const int type, Msg_request_response * ptr) {
 	return FAIL;
 }
 
-void semdown(short semindex) {
+void semdown(int sem) {
 	static struct sembuf op = {0, -1, 0};
-	semop(sems[semindex], &op, 1);
+	semop(sem, &op, 1);
 }
 
-void semup(short semindex) {
+void semup(int sem) {
 	static struct sembuf op = {0, 1, 0};
-	semop(sems[semindex], &op, 1);
+	semop(sem, &op, 1);
 }

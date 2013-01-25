@@ -23,6 +23,7 @@ void init(int argc, char * argv[]) {
 void end(Flag flag) {
 	kill(clientsrv_pid, SIGEND); 
 	kill(logfilesrv_pid, SIGEND);
+	wait(NULL); /* we want to wait for children */	
 	if (flag)
 		exit(EXIT_FAILURE);
 }

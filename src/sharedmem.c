@@ -111,7 +111,7 @@ short sharedmem_end() {
 		}
 	}
 	else {
-		semup(0);
+		semup(sems[0]);
 	}
 	user_server_data == (void *) FAIL ? 0 : shmdt(user_server_data);
 	room_server_data == (void *) FAIL ? 0 : shmdt(room_server_data);
@@ -137,10 +137,10 @@ short register_server() {
 }
 
 short do_in_shmem(short flag, const int server_id, const char * str) {
-	unsigned short i = 0, empty = -1, given = -1, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;
-
+	short i = 0, empty = -1, given = -1, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;
 	if (!(flag & 1)) { /* user_server */
 		semdown(sems[1]);
+			
 		while (i < size) {
 			if (empty < 0 && user_server_data[i].server_id == -1)
 				empty = i;
@@ -148,16 +148,12 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 				given = i;
 			++i;
 		}
-
 		if ((flag & ADD_FLAG) && empty > -1 && given == -1) { /* we have room and string is unique */
 			strcpy(user_server_data[empty].user_name, str);
 			user_server_data[empty].server_id = server_id;
 		}
 		else if ((flag & DEL_FLAG) && given > -1) {
 			user_server_data[given].server_id = -1;
-		}
-		else if (given > -1) {
-			return user_server_data[given].server_id; /* we have to remember about semaphore */
 		}
 		semup(sems[1]);
 	} 
@@ -184,7 +180,7 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 }
 
 short get_list_from_shmem(const int type, Msg_request_response * ptr) {
-	int i, j, size = MAX_SERVERS_NUMBER*MAX_USERS_NUMBER;
+	short i, j, size = MAX_SERVERS_NUMBER*MAX_USERS_NUMBER;
 	if (type == USERS_LIST) {
 		semdown(sems[1]);
 		for (i = 0; i < size; ++i) {

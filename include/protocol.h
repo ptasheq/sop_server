@@ -25,7 +25,7 @@ enum Msg_type {LOGIN=1, RESPONSE, LOGOUT, REQUEST, MESSAGE, ROOM, SERVER2SERVER,
 typedef struct {
 	long type;
 	char username[USER_NAME_MAX_LENGTH];
-	int ipc_num;
+	int ipc_id;
 } Msg_login;
 
 enum Response_type {
@@ -80,6 +80,7 @@ typedef struct {
 typedef struct {
 	char roomname[ROOM_NAME_MAX_LENGTH];
 	char username[USER_NAME_MAX_LENGTH];
+	int id;
 } Room_user;
 
 extern Msg_login * login_data;

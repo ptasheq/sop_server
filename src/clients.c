@@ -34,7 +34,7 @@ void client_service_init(int * ipcs) {
 		}
 		if (!allocate_mem(LOGIN, &login_data) || !allocate_mem(RESPONSE, &response_data) || 
 			!allocate_mem(ROOM, &room_data) || !allocate_mem(MESSAGE, &chatmsg_data) ||
-			!allocate_mem(RESPONSE, &request_data) || !allocate_mem(USERS, &request_response_data) || 
+			!allocate_mem(REQUEST, &request_data) || !allocate_mem(USERS, &request_response_data) || 
 			!allocate_mem(ROOM_USER, &room_user_data)) {
 			perror("Couldn't allocate data structures.");
 			client_service_end(0);
@@ -42,6 +42,7 @@ void client_service_init(int * ipcs) {
 		short i = 0;
 		while (i < MAX_USERS_NUMBER) {
 			room_user_data[i].roomname[0] = '\0';
+			room_user_data[i].username[0] = '\0';
 			++i;
 		}
 		inform_log_service(SERVER_REGISTERED, "", "");
@@ -55,40 +56,41 @@ void client_service_init(int * ipcs) {
 
 void client_service() {
 	set_signal(SIGEND, client_service_end);
-	int client_id;
 	int err_flag, received, i = 0, cur_client;
 	time_t t = time(NULL);
+	response_data->type = RESPONSE;
 	while (1) {
 		if (receive_message(queue_id, LOGIN, login_data) != FAIL) {
+			fprintf(stderr, "%s %d", login_data->username, login_data->ipc_id);
 			perform_action(LOGIN);
 			sprintf(response_data->content, "%s%s", "Welcome, ", login_data->username);
-			if (send_message(client_id, response_data->type, response_data)) {
+			if (send_message(login_data->ipc_id, response_data->type, response_data)) {
 				++i; 
 			}
 		}
 		else if (receive_message(queue_id, MESSAGE, chatmsg_data) != FAIL) {
 			response_data->response_type = MSG_SEND;	
-			send_message(client_id, response_data->type, response_data);
+			send_message(0, response_data->type, response_data);
 			perror(chatmsg_data->message);
 		}
 		else if (receive_message(queue_id, ROOM, room_data) != FAIL) {
 			perror(room_data->room_name);
 			response_data->response_type = ENTERED_ROOM_SUCCESS;
-			send_message(client_id, response_data->type, response_data);
+			send_message(0, response_data->type, response_data);
 		}
 	/*	if (time(NULL) - t >= 1) {
 			response_data->response_type = PING;
 			send_message(client_id, response_data->type, response_data);
 			t = time(NULL);
 		}*/
-		msleep(10);
+		msleep(5);
 	}
 }
 
 void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
-	set_signal(SIGPIPE, SIG_IGN);
-	short last = sharedmem_end();
+	short control, last = sharedmem_end();
 	write(pdesc[1], &last, sizeof(short));
+	read(pdesc2[0], &control, sizeof(short));
 	free_mem(login_data);
 	free_mem(response_data);
 	free_mem(chatmsg_data);
@@ -103,18 +105,34 @@ void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 
 void perform_action(unsigned const int msgtype) {
 	int i = 0;
+	char prev_roomname[ROOM_NAME_MAX_LENGTH] = "";
+	char buf_login[USER_NAME_MAX_LENGTH] = {'\0'}, buf_room[ROOM_NAME_MAX_LENGTH] = {'\0'};
 	if (msgtype == LOGIN) {
-		response_data->response_type = (clients < MAX_USERS_NUMBER && add_user_in_shmem(login_data->username, queue_id) != FAIL) ? 
-		LOGIN_SUCCESS : LOGIN_FAILED;
-		if (response_data->response_type == LOGIN_SUCCESS)
-			++clients;
-
+		while (i < MAX_USERS_NUMBER && room_user_data[i].username[0])
+			++i;
+		if (i < MAX_USERS_NUMBER) {
+			response_data->response_type = (clients < MAX_USERS_NUMBER && add_user_in_shmem(login_data->username, queue_id) != FAIL) ? 
+			LOGIN_SUCCESS : LOGIN_FAILED;
+			if (response_data->response_type == LOGIN_SUCCESS) {
+				strcpy(room_user_data[i].username, login_data->username);
+				strcpy(buf_login, login_data->username);
+				room_user_data[i].id = login_data->ipc_id;
+				clients++;
+			}
+		}
 	}
 	else if (msgtype == LOGOUT) {
 		response_data->response_type = (clients > 0 && del_user_in_shmem(login_data->username, queue_id) != FAIL) ?
 		LOGOUT_SUCCESS : LOGOUT_FAILED;
-		if (response_data->response_type == LOGOUT_SUCCESS)
-			--clients;
+		if (response_data->response_type == LOGOUT_SUCCESS) {
+			while (i < MAX_USERS_NUMBER && strcmp(room_user_data[i].username, login_data->username))
+				++i;
+			if (i < MAX_USERS_NUMBER) {
+				strcpy(buf_login, login_data->username);
+				room_user_data[i].username[0] = '\0';
+				clients--;
+			}
+		}
 	}
 	else if (msgtype == REQUEST) {
 		request_response_data->type = (request_data->request_type == USERS_LIST) ? USERS : 
@@ -127,39 +145,38 @@ void perform_action(unsigned const int msgtype) {
 		}
 	}
 	else if (msgtype == ROOM) {
-		int i = 0, empty = -1, more_in_room = 0;
+		int i = 0, user_index = -1, more_in_room = 0, needs_add = 1;
 		if (room_data->operation_type == ENTER_ROOM || room_data->operation_type == CHANGE_ROOM) {
 			while (i < MAX_USERS_NUMBER) {
-				if (room_data->operation_type == CHANGE_ROOM &&	!strcmp(room_user_data[i].username, room_data->user_name)) {
-					/* wants change room and found the same username */
-					if (!strcmp(room_user_data[i].roomname, room_data->room_name)) { /* already in the same room */
-						empty = -1;
+				if (!strcmp(room_user_data[i].username, room_data->user_name)) {
+					/* found the same username */
+					strcpy(prev_roomname, room_user_data[i].username);
+					if ((room_data->operation_type == ENTER_ROOM && room_user_data[i].roomname[0]) || 
+					!strcmp(room_user_data[i].roomname, room_data->room_name)) { /* already in (the same) room */
+						user_index = -1;
 						i = MAX_USERS_NUMBER;
 					}
 					else {
-						empty = i;
+						user_index = i;
 					}
-					break;
 				}
-				else if (!room_user_data[i].roomname[i] && empty < 0) { /* found empty place */
-					empty = i;
-				}
-				++i;		
+				else if (!strcmp(room_user_data[i].roomname, room_data->room_name)) /* if there is more users in given room */
+					needs_add = 0;
+				++i;
 			}
 			if (room_data->operation_type == CHANGE_ROOM) {
-				if (i < MAX_USERS_NUMBER && empty > -1) {
+				if (i < MAX_USERS_NUMBER && user_index > -1) { /* user was found and is not in any room */ 
 					for (i = 0; i < MAX_USERS_NUMBER; ++i) {
-						if (room_user_data[i].roomname[0] && !strcmp(room_user_data[i].roomname, room_data->room_name) && i != empty)
+						if (room_user_data[i].roomname[0] && !strcmp(room_user_data[i].roomname, prev_roomname) && i != user_index)
 							break;
 					}
 					if (i == MAX_USERS_NUMBER) { /* Previous room should be deleted */
-						del_room_in_shmem(room_user_data[empty].roomname, queue_id);
+						del_room_in_shmem(room_user_data[user_index].roomname, queue_id);
 					}
 				}
 			}
-			if (empty > -1 && add_room_in_shmem(room_data->room_name, queue_id) != FAIL) {
-				strcpy(room_user_data[empty].roomname, room_data->room_name);
-				strcpy(room_user_data[empty].username, room_data->user_name);
+			if (user_index > -1 && ((needs_add && add_room_in_shmem(room_data->room_name, queue_id) != FAIL) || !needs_add)) { /* added in shmem, so adding locally */
+				strcpy(room_user_data[user_index].roomname, room_data->room_name);
 				response_data->response_type = (room_data->operation_type == CHANGE_ROOM) ? CHANGE_ROOM_SUCCESS : ENTERED_ROOM_SUCCESS;
 			}
 			else {
@@ -170,16 +187,16 @@ void perform_action(unsigned const int msgtype) {
 			while (i < MAX_USERS_NUMBER) {
 				if (!strcmp(room_user_data[i].roomname, room_data->room_name) && room_data->room_name[0]) {
 					if (!strcmp(room_user_data[i].username, room_data->user_name))
-						empty = i;
+						user_index = i;
 					else
 						more_in_room = 1;
 				}
 				++i;	
 			}
-			if (empty > -1) {
+			if (user_index > -1) {
 				if (!more_in_room)
-					del_room_in_shmem(room_user_data[empty].roomname, queue_id);
-				room_user_data[empty].roomname[0] = '\0';
+					del_room_in_shmem(room_user_data[user_index].roomname, queue_id);
+				room_user_data[user_index].roomname[0] = '\0';
 				response_data->response_type = LEAVE_ROOM_SUCCESS;
 			}
 			else
@@ -202,16 +219,15 @@ void perform_action(unsigned const int msgtype) {
 			}
 		}
 	}
-	write(pdesc[1], &msgtype, sizeof(int));
+	inform_log_service((short) response_data->response_type, buf_login, buf_room);
 }
 
 void inform_log_service(unsigned short type, const char * user, const char * room) {
 	char control_byte;
 	write(pdesc[1], &type, sizeof(short));
 	read(pdesc2[0], &control_byte, 1);
-	write(pdesc[1], "cos", 4);
+	write(pdesc[1], user, strlen(user)+1);
 	read(pdesc2[0], &control_byte, 1);
-	write(pdesc[1], "cos2", 5);
+	write(pdesc[1], room, strlen(room)+1);
 	read(pdesc2[0], &control_byte, 1);
-	perror("wysylamy");
 }

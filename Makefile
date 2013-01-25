@@ -1,8 +1,8 @@
 CC = gcc
 LD = gcc
 
-CFLAGS = -Wall -I include/ -D_POSIX_C_SOURCE
-LDFLAGS = -Wall -I include/ -D_POSIX_C_SOURCE
+CFLAGS = -Wall -I include/ -D_POSIX_C_SOURCE -ggdb
+LDFLAGS = -Wall -I include/ -D_POSIX_C_SOURCE -ggdb
 
 SRCS = clients.c init.c ioloop.c logfile.c main.c protocol.c sharedmem.c structmem.c
 OBJECTS = $(SRCS:.c=.o)

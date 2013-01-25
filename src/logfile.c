@@ -46,7 +46,7 @@ void logfile_service_end() {
 	}
 	close(logfile_desc);
 	semup(logsem);
-	read(pdesc[0], &last, sizeof(short));
+	piperead(&last, sizeof(short));
 	if (last && !semctl(logsem, 0, GETNCNT))
 		semctl(logsem, 0, IPC_RMID);
 	close(pdesc[0]);
@@ -90,7 +90,6 @@ short prepare_listing(char * line) {
 			}
 			switch (type) {
 				case SERVER_REGISTERED: sprintf(&line[TIME_STR_LENGTH], "%s", "Server registered.\n");
-				perror(line);
 				break;
 				case LOGIN_SUCCESS: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "successfully logged in.\n");
 				break;

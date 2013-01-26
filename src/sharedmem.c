@@ -137,11 +137,12 @@ short register_server() {
 }
 
 short do_in_shmem(short flag, const int server_id, const char * str) {
-	short i = 0, empty = -1, given = -1, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;
+	short i = 0, empty = -1, given = -1, n = 0, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;
 	if (!(flag & 1)) { /* user_server */
 		semdown(sems[1]);
-			
 		while (i < size) {
+			if (user_server_data[i].server_id ==-1)
+				++n;
 			if (empty < 0 && user_server_data[i].server_id == -1)
 				empty = i;
 			if (user_server_data[i].server_id > -1 && !strcmp(str, user_server_data[i].user_name))
@@ -176,7 +177,7 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 		}
 		semup(sems[2]);
 	}
-	return (given > -1 || empty > -1) ? 0 : FAIL;
+	return ((flag & ADD_FLAG) && given == -1 && empty > -1) || ((flag & DEL_FLAG) && given > -1) ? 0 : FAIL;
 }
 
 short get_list_from_shmem(const int type, Msg_request_response * ptr) {

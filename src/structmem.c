@@ -5,6 +5,8 @@ void * am(const int type, void ** ptr) {
 		switch (type) {
 			case LOGIN: case LOGOUT:
 				return (*ptr = malloc(sizeof(Msg_login)));
+			case ROOM:
+				return (*ptr = malloc(sizeof(Msg_room)));
 			case RESPONSE:
 				return(*ptr = malloc(sizeof(Msg_response)));
 			case REQUEST:

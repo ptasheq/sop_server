@@ -1,7 +1,7 @@
 #include "init.h"
 #include "thread.h"
 
-int clientsrv_pid, logfilesrv_pid;
+int clientsrv_pid[2], logfilesrv_pid;
 
 void init(int argc, char * argv[]) {
 	int i, passed_vals[ARG_NUM]; /* 0 - ipc_num, 1,2,3 - shmem_num */
@@ -21,9 +21,10 @@ void init(int argc, char * argv[]) {
 }
 
 void end(Flag flag) {
-	kill(clientsrv_pid, SIGEND); 
 	kill(logfilesrv_pid, SIGEND);
-	wait(NULL); /* we want to wait for children */	
+	kill(clientsrv_pid[0], SIGEND); 
+	kill(clientsrv_pid[1], SIGEND);
+	msleep(100);
 	if (flag)
 		exit(EXIT_FAILURE);
 }

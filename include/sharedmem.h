@@ -29,6 +29,7 @@ short sharedmem_init(int *);
 short sharedmem_end();
 short register_server();
 short do_in_shmem(short flag, const int, const char *);
+short send_message_to_servers(short flag, const int, const Msg_chat_message *);
 short get_list_from_shmem(const int, Msg_request_response *);
 
 #endif

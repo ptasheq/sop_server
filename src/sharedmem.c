@@ -1,5 +1,6 @@
 #include "sharedmem.h"
 #include "thread.h"
+#include "init.h"
 
 User_server * user_server_data = (void *) FAIL;
 Room_server * room_server_data = (void *) FAIL;
@@ -98,7 +99,6 @@ short sharedmem_end() {
 		semdown(sems[2]);
 		if (!semctl(sems[0], 0, GETNCNT) && !semctl(sems[1], 0, GETNCNT) && !semctl(sems[2], 0, GETNCNT)) {
 			/* no one else is waiting */
-
 			for (i = 0; i < SEM_NUM; ++i) {
 				semctl(sems[i], 0, IPC_RMID);
 				shmctl(shmids[i], IPC_RMID, NULL);
@@ -180,12 +180,53 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 	return ((flag & ADD_FLAG) && given == -1 && empty > -1) || ((flag & DEL_FLAG) && given > -1) ? 0 : FAIL;
 }
 
+short send_message_to_servers(short flag, const int sender_id, const Msg_chat_message * msg) {
+	short i = 0, j = 0, sent_count = 0, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;	
+	s2s_data->server_ipc_num = queue_id;
+	if (flag == PRIVATE) { /* we want to send message to other user */
+		semdown(sems[1]);
+		while (i < size && strcmp(user_server_data[i].user_name, msg->receiver) || user_server_data[i].server_id == sender_id)
+			++i;
+		if (i < size) {
+			if (send_message(user_server_data[i].server_id, s2s_data->type, s2s_data) != FAIL) {
+				while (j < MAX_FAILS && receive_message(queue_id, SERVER2SERVER, s2s_data) == FAIL && 
+				s2s_data->server_ipc_num != user_server_data[i].server_id) {
+					++j;
+					msleep(5);
+			}
+				if (j < MAX_FAILS && send_message(user_server_data[i].server_id, msg->type, msg) != FAIL)
+				++sent_count;
+			}
+		}
+		semup(sems[1]);
+	}
+	else { /* we want to public message */
+		semdown(sems[2]);
+		for (; i < size; ++i) {
+			if (room_server_data[i].server_id != sender_id && !strcmp(room_server_data[i].room_name, msg->receiver)) {
+				if (send_message(room_server_data[i].server_id, s2s_data->type, s2s_data) != FAIL)
+					while (j < MAX_FAILS && receive_message(queue_id, SERVER2SERVER, s2s_data) == FAIL && 
+					s2s_data->server_ipc_num != user_server_data[i].server_id) {
+						if (j < MAX_FAILS && send_message(room_server_data[i].server_id, msg->type, msg) != FAIL)
+							++sent_count;
+					}
+				}
+			s2s_data->server_ipc_num = queue_id;
+		}
+		semup(sems[2]);
+	}
+	return (sent_count) ? 0 : FAIL;
+}
+
 short get_list_from_shmem(const int type, Msg_request_response * ptr) {
 	short i, j, size = MAX_SERVERS_NUMBER*MAX_USERS_NUMBER;
 	if (type == USERS_LIST) {
 		semdown(sems[1]);
 		for (i = 0; i < size; ++i) {
-			strcpy(ptr->names[i], user_server_data[i].user_name);
+			if (user_server_data[i].server_id > -1)
+				strcpy(ptr->names[i], user_server_data[i].user_name);
+			else
+				ptr->names[i][0] = '\0';
 		}
 		semup(sems[1]);
 		return 0;
@@ -193,9 +234,12 @@ short get_list_from_shmem(const int type, Msg_request_response * ptr) {
 	else if (type == ROOMS_LIST)  {
 		semdown(sems[2]);
 		for (i = 0; i < size; ++i) {
-			strcpy(ptr->names[i], room_server_data[i].room_name);
+			if (room_server_data[i].server_id > -1)
+				strcpy(ptr->names[i], room_server_data[i].room_name);
+			else
+				ptr->names[i][0] = '\0';
 		}
-		semup(2);
+		semup(sems[2]);
 		for (i = 0; i < size; ++i) {
 			for (j = i+1; j < size; ++j) {
 				if (!strcmp(ptr->names[i], ptr->names[j])) /* if name is unique */

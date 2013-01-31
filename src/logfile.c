@@ -29,17 +29,18 @@ void logfile_service_init() {
 void logfile_service() {
 	char line[STR_BUF_SIZE];
 	set_signal(SIGEND, logfile_service_end);
-	get_time(line);
+	piperead(&queue_id, sizeof(int));
 	while (1) {
 		prepare_listing(line);
 	}
 }
 
 void logfile_service_end() {
-	char line[TIME_STR_LENGTH + 20];
+	char line[60];
 	short last;
-	get_time(line);
-	strcpy(&line[TIME_STR_LENGTH], "Server closed.\n");
+	sprintf(line, "%d\t", queue_id);
+	get_time(&line[strlen(line)]);
+	strcpy(&line[strlen(line)], "Server closed.\n");
 	semdown(logsem);
 	if ((logfile_desc = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0666)) != FAIL) {
 		write(logfile_desc, line, strlen(line));
@@ -58,18 +59,18 @@ void get_time(char * str) { /* all numbers are set because of result of ctime (c
     time_t curtime;
     char buf[30];
     short i = 0, spaces = 0;
-    if (time(&curtime) != -1) {
-        strncpy(buf, ctime(&curtime), 29);
+    if (time(&curtime) != -1) { 
+        strncpy(buf, ctime(&curtime), 29); 
         while (buf[i] && spaces < 1) {
             if (buf[i] == ' ') {
                 ++spaces;
             }
             ++i;
         }
-        if (spaces == 1){
+        if (spaces == 1) {
             strncpy(str, &buf[i], TIME_STR_LENGTH -2);
-            str[TIME_STR_LENGTH-2] = ':';
-			str[TIME_STR_LENGTH-1] = ' ';
+			str[TIME_STR_LENGTH-2] = '\t';
+            str[TIME_STR_LENGTH-1] = '\0';
 			return;
         }
     }
@@ -82,43 +83,44 @@ short prepare_listing(char * line) {
 	char uname[USER_NAME_MAX_LENGTH];
 	if (piperead(&type, sizeof(short)) > FAIL) {
 		if (piperead(uname, USER_NAME_MAX_LENGTH) > FAIL && piperead(rname, ROOM_NAME_MAX_LENGTH) > FAIL) {
+			sprintf(line, "%d\t", queue_id);
 			semdown(logsem);
-			get_time(line);
+			get_time(&line[strlen(line)]);
 			if ((logfile_desc = open(filename, O_CREAT | O_WRONLY | O_APPEND, 0666)) == FAIL) {
 				perror("Couldn't open logfile.");
 				exit(EXIT_FAILURE);
 			}
 			switch (type) {
-				case SERVER_REGISTERED: sprintf(&line[TIME_STR_LENGTH], "%s", "Server registered.\n");
+				case SERVER_REGISTERED: sprintf(&line[strlen(line)], "%s", "Server registered.\n");
 				break;
-				case LOGIN_SUCCESS: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "successfully logged in.\n");
+				case LOGIN_SUCCESS: sprintf(&line[strlen(line)], "%s %s %s", "User", uname, "successfully logged in.\n");
 				break;
-				case LOGIN_FAILED: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "couldn't log in.\n");
+				case LOGIN_FAILED: sprintf(&line[strlen(line)], "%s %s %s", "User", uname, "couldn't log in.\n");
 				break;
-				case LOGOUT_SUCCESS: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "successfully logged out.\n");
+				case LOGOUT_SUCCESS: sprintf(&line[strlen(line)], "%s %s %s", "User", uname, "successfully logged out.\n");
 				break;
-				case LOGOUT_FAILED: sprintf(&line[TIME_STR_LENGTH], "%s %s %s", "User", uname, "couldn't log out.\n");
+				case LOGOUT_FAILED: sprintf(&line[strlen(line)], "%s %s %s", "User", uname, "couldn't log out.\n");
 				break;
 				case ENTERED_ROOM_SUCCESS: 
-					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "successfully entered room", rname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s %s %s%s", "User", uname, "successfully entered room", rname, ".\n");
 				break;
 				case ENTERED_ROOM_FAILED: 
-					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "couldn't enter room", rname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s %s %s%s", "User", uname, "couldn't enter room", rname, ".\n");
 				break;
 				case CHANGE_ROOM_SUCCESS: 
-					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "successfully changed room for", rname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s %s %s%s", "User", uname, "successfully changed room for", rname, ".\n");
 				break;
 				case CHANGE_ROOM_FAILED:
-					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "couldn't change room for", rname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s %s %s%s", "User", uname, "couldn't change room for", rname, ".\n");
 				break;
 				case LEAVE_ROOM_SUCCESS:
-					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "successfully left room", rname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s %s %s%s", "User", uname, "successfully left room", rname, ".\n");
 				break;
 				case LEAVE_ROOM_FAILED:
-					sprintf(&line[TIME_STR_LENGTH], "%s %s %s %s%s", "User", uname, "couldn't leave room", rname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s %s %s%s", "User", uname, "couldn't leave room", rname, ".\n");
 				break;
 				default:
-					sprintf(&line[TIME_STR_LENGTH], "%s %s%s", "Lost connection with user", uname, ".\n");
+					sprintf(&line[strlen(line)], "%s %s%s", "Lost connection with user", uname, ".\n");
 			}
 			write(logfile_desc, line, strlen(line));
 			close(logfile_desc);

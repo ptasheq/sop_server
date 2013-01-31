@@ -33,6 +33,13 @@ int send_message(int id, int msgtype, ...) {
             msleep(5);
 		}
 	}
+	else if (msgtype == SERVER2SERVER) {
+		Msg_server2server * msg = va_arg(vl, Msg_server2server *);
+		while (msgsnd(id, msg, sizeof(Msg_server2server) - sizeof(long), IPC_NOWAIT) == FAIL && i < MAX_FAILS) {
+			++i;
+			msleep(5);
+		}
+	}
 	else if (msgtype == ROOMS || msgtype == USERS || msgtype == ROOM_USERS) {
 		Msg_request_response * msg = va_arg(vl, Msg_request_response *);
 		while (msgsnd(id, msg, sizeof(Msg_request_response) - sizeof(long), IPC_NOWAIT) == FAIL && i < MAX_FAILS) {
@@ -65,6 +72,10 @@ int receive_message(int id, int msgtype, ...) {
         Msg_room * msg = va_arg(vl, Msg_room *);
         i = msgrcv(id, msg, sizeof(Msg_room) - sizeof(long), msgtype, IPC_NOWAIT); 
     }	
+	else if (msgtype == SERVER2SERVER) {
+		Msg_server2server * msg = va_arg(vl, Msg_server2server *);
+		i = msgrcv(id, msg, sizeof(Msg_server2server) - sizeof(long), msgtype, IPC_NOWAIT);
+	}
 	va_end(vl);
 	return i;
 }

@@ -15,6 +15,8 @@ void * am(const int type, void ** ptr) {
 				return (*ptr = malloc(sizeof(Msg_chat_message)));
 			case ROOM_USER:
 				return (*ptr = malloc(sizeof(Room_user) * MAX_USERS_NUMBER));
+			case SERVER2SERVER:
+				return (*ptr = malloc(sizeof(Msg_server2server)));
 			case USERS: case ROOMS: case ROOM_USERS:
 				return (*ptr = malloc(sizeof(Msg_request_response)));
 			default:

@@ -80,14 +80,16 @@ typedef struct {
 typedef struct {
 	char roomname[ROOM_NAME_MAX_LENGTH];
 	char username[USER_NAME_MAX_LENGTH];
+	short ping_count;
 	int id;
 } Room_user;
 
 extern Msg_login * login_data;
+extern Msg_server2server * s2s_data;
+extern Msg_request_response * request_response_data;
 extern Msg_response * response_data;
 extern Msg_chat_message * chatmsg_data;
 extern Msg_room * room_data;
-extern int queue_id;
 
 int send_message(int, int, ...);
 int receive_message(int, int, ...);

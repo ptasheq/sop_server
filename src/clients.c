@@ -74,18 +74,14 @@ void client_service_init(int * ipcs) { /* it consists of two threads */
 		}
 		set_signal(SIGEND, thread2_end);
 		s2s_data->type = SERVER2SERVER;
+		perror("started");
 		while (1) {
 			read(pdesc3[0], &rcv, sizeof(char));
 			if (rcv && msgrcv(queue_id, s2s_data, sizeof(Msg_server2server) - sizeof(long), SERVER2SERVER, 0) != FAIL) {
 				read(pdesc3[0], &rcv, sizeof(char));
-				if (rcv) {
-					sender_id = s2s_data->server_ipc_num;
-					s2s_data->server_ipc_num = queue_id;
-					send_message(sender_id, SERVER2SERVER, s2s_data);	
-				}
-				else {
-					send_message(queue_id, s2s_data->type, s2s_data);
-				}
+				sender_id = s2s_data->server_ipc_num;
+				s2s_data->server_ipc_num = queue_id;
+				send_message(sender_id, s2s_data->type, s2s_data);	
 			}
 			msleep(5);
 		}
@@ -236,7 +232,6 @@ void perform_action(unsigned const int msgtype) {
 					}
 					else {
 						user_index = i;
-						break;
 					}
 				}
 				else if (!strcmp(room_user_data[i].roomname, room_data->room_name)) /* if there is more users in given room */
@@ -244,14 +239,12 @@ void perform_action(unsigned const int msgtype) {
 				++i;
 			}
 			if (room_data->operation_type == CHANGE_ROOM) {
-				if (i < MAX_USERS_NUMBER && user_index > -1) { /* user was found and is not in any room */ 
-					perror("in");
+				if (user_index > -1) { /* user was found and is not in any room */ 
 					for (i = 0; i < MAX_USERS_NUMBER; ++i) {
 						if (room_user_data[i].roomname[0] && i != user_index && !strcmp(room_user_data[i].roomname, room_user_data[user_index].roomname))
 							break;
 					}
 					if (i == MAX_USERS_NUMBER) { /* previous room should be deleted */
-						perror("usuwamy");
 						del_room_in_shmem(room_user_data[user_index].roomname, queue_id);
 					}
 				}
@@ -277,13 +270,10 @@ void perform_action(unsigned const int msgtype) {
 				++i;	
 			}
 			if (user_index > -1) {
-				perror("weszlo");
 				if (room_user_data[user_index].roomname[0]) {
 					perror(room_user_data[user_index].roomname);
 					if (users_in_room(room_user_data[user_index].roomname) == 1) {
-						perror("weszlo2");
 						del_room_in_shmem(room_user_data[user_index].roomname, queue_id);
-						perror("weszlo3");
 					}
 					strcpy(buf_room, room_user_data[user_index].roomname);
 					room_user_data[user_index].roomname[0] = '\0';
@@ -301,14 +291,12 @@ void perform_action(unsigned const int msgtype) {
 		response_data->response_type = -1;
 		int j = 0, success_flag = 0;	
 		chatmsg_data->sender[USER_NAME_MAX_LENGTH-1] = chatmsg_data->receiver[USER_NAME_MAX_LENGTH-1] = '\0';
-		while (i < MAX_USERS_NUMBER && strcmp(chatmsg_data->sender, room_user_data[i].username)) 
-			++i;
+		i = find_user(chatmsg_data->sender);
 		if (chatmsg_data->msg_type == PRIVATE) {
-			if ((j = find_user(chatmsg_data->receiver))) { /* receiver is on our server */
+			if ((j = find_user(chatmsg_data->receiver)) > FAIL) { /* receiver is on our server */
 				if (send_message(room_user_data[j].id, chatmsg_data->type, chatmsg_data) != FAIL)
 					++success_flag;
-			}
-			
+			} 
 		}
 
 		else { /* public message */
@@ -321,8 +309,8 @@ void perform_action(unsigned const int msgtype) {
 			}
 		}
 
-		if (i < MAX_USERS_NUMBER) { /* sender is on our server */
-			if (send_message_to_servers(chatmsg_data->msg_type, queue_id, chatmsg_data) != FAIL)
+		if (i > FAIL && !(success_flag && chatmsg_data->msg_type == PRIVATE)) { /* sender is on our server */
+			if (send_message_to_servers(chatmsg_data) != FAIL)
 				++success_flag;
 			response_data->response_type = (success_flag) ? MSG_SEND : MSG_NOT_SEND;
 			send_message(room_user_data[i].id, response_data->type, response_data);

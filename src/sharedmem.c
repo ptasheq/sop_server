@@ -180,40 +180,70 @@ short do_in_shmem(short flag, const int server_id, const char * str) {
 	return ((flag & ADD_FLAG) && given == -1 && empty > -1) || ((flag & DEL_FLAG) && given > -1) ? 0 : FAIL;
 }
 
-short send_message_to_servers(short flag, const int sender_id, const Msg_chat_message * msg) {
+short send_message_to_servers(const Msg_chat_message * msg) {
+	int buf_ipc_num;
 	short i = 0, j = 0, sent_count = 0, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;	
+	char receive = 0;
 	s2s_data->server_ipc_num = queue_id;
-	if (flag == PRIVATE) { /* we want to send message to other user */
+	if (msg->msg_type == PRIVATE) { /* we want to send message to other user */
 		semdown(sems[1]);
-		while (i < size && strcmp(user_server_data[i].user_name, msg->receiver) || user_server_data[i].server_id == sender_id)
+		while ((i < size && strcmp(user_server_data[i].user_name, msg->receiver)) || user_server_data[i].server_id == queue_id)
 			++i;
 		if (i < size) {
+			write(pdesc3[1], &receive, sizeof(char)); /* turning off receiving service */ 
 			if (send_message(user_server_data[i].server_id, s2s_data->type, s2s_data) != FAIL) {
-				while (j < MAX_FAILS && receive_message(queue_id, SERVER2SERVER, s2s_data) == FAIL && 
-				s2s_data->server_ipc_num != user_server_data[i].server_id) {
+				while (j < MAX_FAILS) {
+					if (receive_message(queue_id, SERVER2SERVER, s2s_data) != FAIL) {
+						if (s2s_data->server_ipc_num != user_server_data[i].server_id) { /* somebody else wants check if we are available */
+							buf_ipc_num = s2s_data->server_ipc_num;
+							s2s_data->server_ipc_num = queue_id;
+							send_message(buf_ipc_num, s2s_data->type, s2s_data);
+						}
+						else 
+							break; 
+					}
 					++j;
 					msleep(5);
-			}
+				}
 				if (j < MAX_FAILS && send_message(user_server_data[i].server_id, msg->type, msg) != FAIL)
-				++sent_count;
+					++sent_count;
 			}
+			receive = 1;
+			write(pdesc3[1], &receive, sizeof(char)); /* turning on receiving service */
 		}
 		semup(sems[1]);
 	}
 	else { /* we want to public message */
+		write(pdesc3[1], &receive, sizeof(char)); /* turning off receiving service */ 
+		perror("ok");
 		semdown(sems[2]);
 		for (; i < size; ++i) {
-			if (room_server_data[i].server_id != sender_id && !strcmp(room_server_data[i].room_name, msg->receiver)) {
-				if (send_message(room_server_data[i].server_id, s2s_data->type, s2s_data) != FAIL)
-					while (j < MAX_FAILS && receive_message(queue_id, SERVER2SERVER, s2s_data) == FAIL && 
-					s2s_data->server_ipc_num != user_server_data[i].server_id) {
-						if (j < MAX_FAILS && send_message(room_server_data[i].server_id, msg->type, msg) != FAIL)
-							++sent_count;
+			j = 0;
+			if (room_server_data[i].server_id != queue_id && room_server_data[i].server_id > -1 && 
+			!strcmp(room_server_data[i].room_name, msg->receiver)) {
+				if (send_message(room_server_data[i].server_id, s2s_data->type, s2s_data) != FAIL) {
+					while (j < MAX_FAILS) {
+						if (receive_message(queue_id, SERVER2SERVER, s2s_data) != FAIL) {
+							if (s2s_data->server_ipc_num != room_server_data[i].server_id) { /* somebody else wants check if we are available */
+								buf_ipc_num = s2s_data->server_ipc_num;
+								s2s_data->server_ipc_num = queue_id;
+								send_message(buf_ipc_num, s2s_data->type, s2s_data);
+							}
+							else 
+								break; 
+						}
+						++j;
+						msleep(2);
 					}
+					if (j < MAX_FAILS && send_message(room_server_data[i].server_id, msg->type, msg) != FAIL)
+						++sent_count;
+					else perror("error");
 				}
-			s2s_data->server_ipc_num = queue_id;
+			}
 		}
 		semup(sems[2]);
+		receive = 1;
+		write(pdesc3[1], &receive, sizeof(char)); /* turning on receiving service */
 	}
 	return (sent_count) ? 0 : FAIL;
 }
@@ -243,7 +273,7 @@ short get_list_from_shmem(const int type, Msg_request_response * ptr) {
 		for (i = 0; i < size; ++i) {
 			for (j = i+1; j < size; ++j) {
 				if (!strcmp(ptr->names[i], ptr->names[j])) /* if name is unique */
-					ptr->names[i][0] = '\0';
+					ptr->names[j][0] = '\0';
 			}
 		}
 		return 0;

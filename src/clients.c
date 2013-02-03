@@ -73,17 +73,16 @@ void client_service_init(int * ipcs) { /* it consists of two threads */
 			exit(EXIT_FAILURE);
 		}
 		set_signal(SIGEND, thread2_end);
-		s2s_data->type = SERVER2SERVER;
-		perror("started");
 		while (1) {
 			read(pdesc3[0], &rcv, sizeof(char));
 			if (rcv && msgrcv(queue_id, s2s_data, sizeof(Msg_server2server) - sizeof(long), SERVER2SERVER, 0) != FAIL) {
 				read(pdesc3[0], &rcv, sizeof(char));
 				sender_id = s2s_data->server_ipc_num;
+				s2s_data->type = SERVER2SERVER;
 				s2s_data->server_ipc_num = queue_id;
 				send_message(sender_id, s2s_data->type, s2s_data);	
 			}
-			msleep(5);
+			msleep(1);
 		}
 	}
 	else if (clientsrv_pid[1] == FAIL) {
@@ -105,7 +104,6 @@ void client_service() {
 			if (request_data->request_type == PONG) {
 				if ((client = find_user(request_data->user_name)) != FAIL && room_user_data[client].ping_count) {
 					--room_user_data[client].ping_count;
-					fprintf(stderr, "Ping received\n");
 				}
 			}
 			else { /* some other request */
@@ -151,7 +149,6 @@ void client_service() {
 
 void client_service_end(Flag flag) { /* != 0 - raised by signal, ==0 - error */
 	short control, last = sharedmem_end();
-	perror("doszlo");
 	write(pdesc[1], &last, sizeof(short));
 	read(pdesc2[0], &control, sizeof(char));
 	free_mem(login_data);
@@ -181,7 +178,6 @@ void perform_action(unsigned const int msgtype) {
 			if (response_data->response_type == LOGIN_SUCCESS) {
 				strcpy(room_user_data[i].username, login_data->username);
 				room_user_data[i].id = login_data->ipc_id;
-				fprintf(stderr, "zalogowano: %s %d", login_data->username, i);
 				clients++;
 				sprintf(response_data->content, "%s%s", "Welcome, ", login_data->username);
 				send_message(login_data->ipc_id, response_data->type, response_data);
@@ -210,7 +206,7 @@ void perform_action(unsigned const int msgtype) {
 	}
 	else if (msgtype == REQUEST) {
 		response_data->response_type = -1;
-		int user_index;
+		int user_index, j;
 		request_response_data->type = (request_data->request_type == USERS_LIST) ? USERS : 
 		(request_data->request_type == ROOMS_LIST) ? ROOMS : ROOM_USERS;
 			if ((user_index = find_user(request_data->user_name)) > FAIL && get_list_from_shmem(request_data->request_type, request_response_data) > FAIL) {
@@ -218,7 +214,6 @@ void perform_action(unsigned const int msgtype) {
 			}
 	}
 	else if (msgtype == ROOM) {
-		fprintf(stderr, "%s %s", room_data->room_name, room_data->user_name);
 		room_data->user_name[USER_NAME_MAX_LENGTH-1] = '\0';
 		room_data->room_name[ROOM_NAME_MAX_LENGTH-1] = '\0';
 		short i = 0, user_index = -1, needs_add = 1;
@@ -271,7 +266,6 @@ void perform_action(unsigned const int msgtype) {
 			}
 			if (user_index > -1) {
 				if (room_user_data[user_index].roomname[0]) {
-					perror(room_user_data[user_index].roomname);
 					if (users_in_room(room_user_data[user_index].roomname) == 1) {
 						del_room_in_shmem(room_user_data[user_index].roomname, queue_id);
 					}
@@ -288,7 +282,6 @@ void perform_action(unsigned const int msgtype) {
 		strcpy(buf_login, room_user_data[user_index].username);
 	}
 	else if (msgtype == MESSAGE) {
-		response_data->response_type = -1;
 		int j = 0, success_flag = 0;	
 		chatmsg_data->sender[USER_NAME_MAX_LENGTH-1] = chatmsg_data->receiver[USER_NAME_MAX_LENGTH-1] = '\0';
 		i = find_user(chatmsg_data->sender);
@@ -309,13 +302,13 @@ void perform_action(unsigned const int msgtype) {
 			}
 		}
 
-		if (i > FAIL && !(success_flag && chatmsg_data->msg_type == PRIVATE)) { /* sender is on our server */
-			if (send_message_to_servers(chatmsg_data) != FAIL)
+		if (i > FAIL) { /* sender is on our server */
+			if ((chatmsg_data->msg_type != PRIVATE || j == FAIL) 
+			&& send_message_to_servers(chatmsg_data) != FAIL) /* private message -> receiver is not on our server */
 				++success_flag;
 			response_data->response_type = (success_flag) ? MSG_SEND : MSG_NOT_SEND;
 			send_message(room_user_data[i].id, response_data->type, response_data);
 		}
-		fprintf(stderr, "%d %s", response_data->response_type, chatmsg_data->message);
 	}
 	if (response_data->response_type > -1 && msgtype != MESSAGE)
 		inform_log_service((short) response_data->response_type, buf_login, buf_room);

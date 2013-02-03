@@ -84,7 +84,7 @@ short sharedmem_init(int * shm_nums) {
 }
 
 short sharedmem_end() {
-	short i = 0, last = 1;
+	short i = 0, last = 1, needs_cleaning = 1;
 	semdown(sems[0]);
 	for (i = 0; i < MAX_SERVERS_NUMBER; ++i) {
 		if (server_ids_data[i] > -1 && server_ids_data[i] != queue_id) {
@@ -94,24 +94,36 @@ short sharedmem_end() {
 			server_ids_data[i] = -1;	
 		}
 	}
+	semdown(sems[1]);
 	if (last) { /* we are the last server */
-		semdown(sems[1]);
 		semdown(sems[2]);
 		if (!semctl(sems[0], 0, GETNCNT) && !semctl(sems[1], 0, GETNCNT) && !semctl(sems[2], 0, GETNCNT)) {
 			/* no one else is waiting */
+			needs_cleaning = 0;
 			for (i = 0; i < SEM_NUM; ++i) {
 				semctl(sems[i], 0, IPC_RMID);
 				shmctl(shmids[i], IPC_RMID, NULL);
 			}
 		}
 		else { /* someone appeared in the meantime */
-			for (i = 0; i < SEM_NUM; ++i) {
+			for (i = 1; i < SEM_NUM; ++i) {
 				semup(sems[i]);
 			}
 		}
 	}
-	else {
+	else if (needs_cleaning) {
 		semup(sems[0]);
+		for (i = 0; i < MAX_SERVERS_NUMBER*MAX_USERS_NUMBER; ++i) {
+			if (user_server_data[i].server_id == queue_id)
+				user_server_data[i].server_id = -1;
+		}
+		semup(sems[1]);
+		semdown(sems[2]);
+		for (i = 0; i < MAX_SERVERS_NUMBER*MAX_USERS_NUMBER; ++i) {
+			if (room_server_data[i].server_id == queue_id)
+				room_server_data[i].server_id = -1;
+		}
+		semup(sems[2]);
 	}
 	user_server_data == (void *) FAIL ? 0 : shmdt(user_server_data);
 	room_server_data == (void *) FAIL ? 0 : shmdt(room_server_data);
@@ -120,6 +132,8 @@ short sharedmem_end() {
 	free(sems);
 	return last;
 }
+
+
 
 short register_server() {
 	int i = 0;
@@ -184,6 +198,7 @@ short send_message_to_servers(const Msg_chat_message * msg) {
 	int buf_ipc_num;
 	short i = 0, j = 0, sent_count = 0, size = MAX_SERVERS_NUMBER * MAX_USERS_NUMBER;	
 	char receive = 0;
+	s2s_data->type = SERVER2SERVER;
 	s2s_data->server_ipc_num = queue_id;
 	if (msg->msg_type == PRIVATE) { /* we want to send message to other user */
 		semdown(sems[1]);
@@ -214,9 +229,8 @@ short send_message_to_servers(const Msg_chat_message * msg) {
 		semup(sems[1]);
 	}
 	else { /* we want to public message */
-		write(pdesc3[1], &receive, sizeof(char)); /* turning off receiving service */ 
-		perror("ok");
 		semdown(sems[2]);
+		write(pdesc3[1], &receive, sizeof(char)); /* turning off receiving service */ 
 		for (; i < size; ++i) {
 			j = 0;
 			if (room_server_data[i].server_id != queue_id && room_server_data[i].server_id > -1 && 
@@ -237,8 +251,8 @@ short send_message_to_servers(const Msg_chat_message * msg) {
 					}
 					if (j < MAX_FAILS && send_message(room_server_data[i].server_id, msg->type, msg) != FAIL)
 						++sent_count;
-					else perror("error");
 				}
+				s2s_data->server_ipc_num = queue_id;
 			}
 		}
 		semup(sems[2]);

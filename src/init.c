@@ -7,7 +7,7 @@ void init(int argc, char * argv[]) {
 	int i, passed_vals[ARG_NUM]; /* 0 - ipc_num, 1,2,3 - shmem_num */
 	set_signal(SIGCHLD, end);
 	if (argc != 5) {
-		perror("Usage: <executable> <ipc_num> <3 x shmem_num>");
+		perror("Usage: <executable> <ipc_queue> <3 x shmem_num>");
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < ARG_NUM; ++i) {
